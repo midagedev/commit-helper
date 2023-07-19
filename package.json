@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "description": "An intelligent commit message generator using OpenAI's GPT-4 model.",
   "main": "commit-helper.js",
+  "bin": {
+    "commit-helper": "./commit-helper.js"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
