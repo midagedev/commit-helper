@@ -5,7 +5,7 @@ Commit Helper is a Node.js command line tool that uses OpenAI's GPT-4 model to g
 
 ```bash
 
-npm install -g commit-helper
+npm install -g @midagedev/commit-helper
 ```
 
 
