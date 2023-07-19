@@ -26,7 +26,7 @@ After setting the API key, if you want to generate a commit message for the curr
 
 ```bash
 
-commit-helper commit
+commit-helper message
 ```
 
 

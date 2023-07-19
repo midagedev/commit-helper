@@ -3,7 +3,7 @@
 const fs = require('fs');
 const {execSync} = require('child_process');
 const {program} = require('commander');
-const { Configuration, OpenAIApi } = require("openai");
+const {Configuration, OpenAIApi} = require("openai");
 
 let openai;
 
@@ -15,24 +15,25 @@ async function getCommitMessage(diff) {
     return chatCompletion.data.choices[0].message.content.replace(/\"/g, '')
 }
 
+function init() {
+    try {
+        const config = JSON.parse(fs.readFileSync('.config', 'utf-8'));
+        openai = new OpenAIApi(new Configuration({apiKey: config.apiKey}))
+    } catch (err) {
+        console.error(err)
+        console.log('No OpenAI API key found. Please set your key using the config command.');
+        console.log('commit-helper config -k <key>');
+        process.exit(1);
+    }
+}
+
 program.version('1.0.0');
 
 program
-    .command('commit', {isDefault: true})
+    .command('message', {isDefault: true})
     .description('Create a commit with a message from the OpenAI API.')
     .action(async () => {
-
-        try {
-
-            const config = JSON.parse(fs.readFileSync('.config', 'utf-8'));
-            openai =  new OpenAIApi(new Configuration({apiKey: config.apiKey}))
-        } catch (err) {
-            console.error(err)
-            console.log('No OpenAI API key found. Please set your key using the config command.');
-            console.log('commit-helper config -k <key>');
-            process.exit(1);
-        }
-
+        init();
         const diff = execSync('git diff').toString();
 
         if (!diff) {
