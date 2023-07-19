@@ -1,6 +1,6 @@
 {
   "name": "@midagedev/commit-helper",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "An intelligent commit message generator using OpenAI's GPT-4 model.",
   "main": "commit-helper.js",
   "bin": {

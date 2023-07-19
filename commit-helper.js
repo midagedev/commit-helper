@@ -76,9 +76,10 @@ program
     .option('-k, --api-key <key>', 'Set the OpenAI API key.')
     .option('-l, --review-language <reviewLanguage>', 'Set the language for the review.')
     .action((config) => {
+        const configPath = path.join(os.homedir(), '.commit-helper-config.json');
         let oldConfig = {};
-        if (fs.existsSync('.config')) {
-            oldConfig = JSON.parse(fs.readFileSync('.config', 'utf-8'));
+        if (fs.existsSync(configPath)) {
+            oldConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         }
         fs.writeFileSync('.config', JSON.stringify({...oldConfig, ...config}), 'utf-8');
         console.log('Config saved.');
