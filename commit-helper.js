@@ -4,6 +4,8 @@ const fs = require('fs');
 const {execSync} = require('child_process');
 const {program} = require('commander');
 const {Configuration, OpenAIApi} = require("openai");
+const os = require('os');
+const path = require('path');
 
 let openai;
 let config;
