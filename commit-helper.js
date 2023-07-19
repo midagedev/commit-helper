@@ -12,7 +12,7 @@ async function getCommitMessage(diff) {
     const chatCompletion = await openai.createChatCompletion({
         model: 'gpt-4', messages: [{role: 'user', content: prompt,}]
     });
-    return JSON.parse(chatCompletion.data.choices[0].message.content)
+    return chatCompletion.data.choices[0].message.content.replace(/\"/g, '')
 }
 
 program.version('1.0.0');
