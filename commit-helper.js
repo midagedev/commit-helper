@@ -16,7 +16,7 @@ async function getCommitMessage(diff) {
 }
 
 async function getReview(diff) {
-    const prompt = `Review and Se the following code changes:\n\n${diff}`;
+    const prompt = `Review the following code changes and suggest improvements:\n\n${diff}`;
     const chatCompletion = await openai.createChatCompletion({
         model: 'gpt-4', messages: [{role: 'user', content: prompt,}]
     });
