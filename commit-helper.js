@@ -15,6 +15,14 @@ async function getCommitMessage(diff) {
     return chatCompletion.data.choices[0].message.content.replace(/\"/g, '')
 }
 
+async function getReview(diff) {
+    const prompt = `Review and Se the following code changes:\n\n${diff}`;
+    const chatCompletion = await openai.createChatCompletion({
+        model: 'gpt-4', messages: [{role: 'user', content: prompt,}]
+    });
+    return chatCompletion.data.choices[0].message.content
+}
+
 function init() {
     try {
         const config = JSON.parse(fs.readFileSync('.config', 'utf-8'));
@@ -44,6 +52,21 @@ program
         const commitMessage = await getCommitMessage(diff);
         console.log(commitMessage);
     });
+
+program.command('review')
+    .description('Review a changes with the OpenAI API.')
+    .action(async () => {
+        init();
+        const diff = execSync('git diff').toString();
+
+        if (!diff) {
+            console.log('No changes to review.');
+            return;
+        }
+
+        const review = await getReview(diff);
+        console.log(review);
+    })
 
 program
     .command('config')
