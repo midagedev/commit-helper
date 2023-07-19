@@ -6,6 +6,7 @@ const {program} = require('commander');
 const {Configuration, OpenAIApi} = require("openai");
 
 let openai;
+let config;
 
 async function getCommitMessage(diff) {
     const prompt = `Given the following code changes:\n\n${diff}\n\nWhat is an appropriate commit message?`;
@@ -16,7 +17,10 @@ async function getCommitMessage(diff) {
 }
 
 async function getReview(diff) {
-    const prompt = `Review the following code changes and suggest improvements:\n\n${diff}`;
+    let prompt = `Review the following code changes and suggest improvements \n\n${diff}`;
+    if (config.reviewLanguage) {
+        prompt += `\n\nPlease respond in this language: ${config.reviewLanguage}`;
+    }
     const chatCompletion = await openai.createChatCompletion({
         model: 'gpt-4', messages: [{role: 'user', content: prompt,}]
     });
@@ -25,10 +29,9 @@ async function getReview(diff) {
 
 function init() {
     try {
-        const config = JSON.parse(fs.readFileSync('.config', 'utf-8'));
+        config = JSON.parse(fs.readFileSync('.config', 'utf-8'));
         openai = new OpenAIApi(new Configuration({apiKey: config.apiKey}))
     } catch (err) {
-        console.error(err)
         console.log('No OpenAI API key found. Please set your key using the config command.');
         console.log('commit-helper config -k <key>');
         process.exit(1);
@@ -71,9 +74,14 @@ program.command('review')
 program
     .command('config')
     .option('-k, --api-key <key>', 'Set the OpenAI API key.')
-    .action((key) => {
-        fs.writeFileSync('.config', JSON.stringify(key), 'utf-8');
-        console.log('OpenAI API key set successfully.');
+    .option('-l, --review-language <reviewLanguage>', 'Set the language for the review.')
+    .action((config) => {
+        let oldConfig = {};
+        if (fs.existsSync('.config')) {
+            oldConfig = JSON.parse(fs.readFileSync('.config', 'utf-8'));
+        }
+        fs.writeFileSync('.config', JSON.stringify({...oldConfig, ...config}), 'utf-8');
+        console.log('Config saved.');
     });
 
 program.parse(process.argv);
