@@ -31,7 +31,8 @@ async function getReview(diff) {
 
 function init() {
     try {
-        config = JSON.parse(fs.readFileSync('.config', 'utf-8'));
+        const configPath = path.join(os.homedir(), '.commit-helper-config.json');
+        config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         openai = new OpenAIApi(new Configuration({apiKey: config.apiKey}))
     } catch (err) {
         console.log('No OpenAI API key found. Please set your key using the config command.');
@@ -83,7 +84,7 @@ program
         if (fs.existsSync(configPath)) {
             oldConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         }
-        fs.writeFileSync('.config', JSON.stringify({...oldConfig, ...config}), 'utf-8');
+        fs.writeFileSync(configPath, JSON.stringify({...oldConfig, ...config}), 'utf-8');
         console.log('Config saved.');
     });
 
