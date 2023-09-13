@@ -7,10 +7,12 @@ const {Configuration, OpenAIApi} = require("openai");
 const os = require('os');
 const path = require('path');
 
+const readline = require('readline');
+
 let openai;
 let config;
 
-async function getCommitMessage(diff) {
+async function getCommitMessage(diff) { "any"
     const prompt = `Given the following code changes:\n\n${diff}\n\nWhat is an appropriate commit message?`;
     const chatCompletion = await openai.createChatCompletion({
         model: 'gpt-4', messages: [{role: 'user', content: prompt,}]
@@ -29,6 +31,59 @@ async function getReview(diff) {
     return chatCompletion.data.choices[0].message.content
 }
 
+function getRandomIndex(max) {
+    return Math.floor(Math.random() * max);
+}
+
+async function getRandomCommitAroundOneYearAgo() {
+    const oneYearAgoDate = new Date();
+    oneYearAgoDate.setFullYear(oneYearAgoDate.getFullYear() - 1);
+    oneYearAgoDate.setDate(oneYearAgoDate.getDate() - 7); // 일주일 전으로 설정
+
+    const endDate = new Date(oneYearAgoDate);
+    endDate.setDate(endDate.getDate() + 14); // 일주일 후로 설정
+
+    const startDateString = `${oneYearAgoDate.getFullYear()}-${String(oneYearAgoDate.getMonth() + 1).padStart(2, '0')}-${String(oneYearAgoDate.getDate()).padStart(2, '0')}`;
+    const endDateString = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+
+    const userEmail = execSync('git config user.email').toString().trim();
+    const log = execSync(`git log --since="${startDateString} 00:00" --until="${endDateString} 23:59" --author="${userEmail}" --no-merges --pretty=format:"%H"`).toString();
+    const commits = log.split('\n').filter(Boolean); // filter(Boolean) to remove empty strings
+
+    if (commits.length === 0) {
+        return null;
+    }
+
+    const randomIndex = getRandomIndex(commits.length);
+    const randomCommit = commits[randomIndex];
+    const diff = execSync(`git show ${randomCommit}`).toString();
+
+    return { commit: randomCommit, diff };
+}
+
+async function askUserForAction(commitData) {
+    return new Promise((resolve) => {
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+
+        console.log(`Selected commit: ${commitData.commit}`);
+        console.log(`Diff:\n${commitData.diff}`);
+        rl.question('Do you want to review this commit? (Y)es/(N)o/(R)eroll, default is Reroll): ', function (answer) {
+            answer = answer.toLowerCase().trim();
+            if (answer === 'y' || answer === 'yes') {
+                resolve('yes');
+            } else if (answer === 'n' || answer === 'no') {
+                resolve('no');
+            } else {
+                resolve('reroll');
+            }
+            rl.close();
+        });
+    });
+}
+
 function init() {
     try {
         const configPath = path.join(os.homedir(), '.commit-helper-config.json');
@@ -41,7 +96,7 @@ function init() {
     }
 }
 
-program.version('1.0.0');
+program.version('0.0.7');
 
 program
     .command('message', {isDefault: true})
@@ -73,6 +128,31 @@ program.command('review')
         const review = await getReview(diff);
         console.log(review);
     })
+
+program.command('timetravel')
+    .description('Review a random commit from the past year.')
+    .action(async () => {
+        init();
+
+        let commitData;
+        let userAction = 'reroll';
+
+        while (userAction === 'reroll') {
+            commitData = await getRandomCommitAroundOneYearAgo();
+            if (!commitData) {
+                console.log('No commits from around one year ago to review.');
+                return;
+            }
+
+            userAction = await askUserForAction(commitData);
+        }
+
+        if (userAction === 'yes') {
+            console.log(`Reviewing commit ${commitData.commit}...`);
+            const review = await getReview(commitData.diff);
+            console.log(`Review for commit ${commitData.commit}:\n${review}`);
+        }
+    });
 
 program
     .command('config')

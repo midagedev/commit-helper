@@ -68,9 +68,11 @@ commit-helper review
 
 ```
 
+### Time Travel
+To review a random commit from around one year ago:
 
+```bash
 
-The generated code review will be printed to the console.
-## Note
+commit-helper timetravel
 
-The accuracy of the generated messages and reviews can vary and they are not guaranteed to always be correct. Also, the accuracy of non-English responses might be less consistent. It is always good practice to review any generated messages or reviews before use.
+```
