@@ -1,6 +1,6 @@
 {
   "name": "@midagedev/commit-helper",
-  "version": "0.0.7",
+  "version": "0.2.0",
   "description": "An intelligent commit message generator using OpenAI's GPT-4 model.",
   "main": "commit-helper.js",
   "bin": {
@@ -28,7 +28,10 @@
   },
   "homepage": "https://github.com/midagedev/commit-helper#readme",
   "dependencies": {
-    "commander": "^11.0.0",
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@aws-sdk/client-bedrock-runtime": "^3.699.0",
+    "ai": "^4.0.9",
+    "commander": "^11.1.0",
     "openai": "^3.3.0"
   }
 }

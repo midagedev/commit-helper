@@ -1,35 +1,121 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
-const {execSync} = require('child_process');
-const {program} = require('commander');
-const {Configuration, OpenAIApi} = require("openai");
+const { execSync } = require('child_process');
+const { program } = require('commander');
 const os = require('os');
 const path = require('path');
-
+const OpenAI = require('openai');
+const Anthropic = require('@anthropic-ai/sdk');
+const { BedrockRuntimeClient, InvokeModelCommand } = require("@aws-sdk/client-bedrock-runtime");
+const { streamToResponse } = require('ai');
 const readline = require('readline');
 
-let openai;
-let config;
+class LLMClient {
+    constructor(config) {
+        this.config = config;
+        this.clients = {};
 
-async function getCommitMessage(diff) { "any"
-    const prompt = `Given the following code changes:\n\n${diff}\n\nWhat is an appropriate commit message?`;
-    const chatCompletion = await openai.createChatCompletion({
-        model: 'gpt-4', messages: [{role: 'user', content: prompt,}]
-    });
-    return chatCompletion.data.choices[0].message.content.replace(/\"/g, '')
-}
-
-async function getReview(diff) {
-    let prompt = `Review the following code changes and suggest improvements \n\n${diff}`;
-    if (config.reviewLanguage) {
-        prompt += `\n\nPlease respond in this language: ${config.reviewLanguage}`;
+        // Initialize enabled clients
+        if (config.openai?.apiKey) {
+            this.clients.openai = new OpenAI({ apiKey: config.openai.apiKey });
+        }
+        if (config.anthropic?.apiKey) {
+            this.clients.anthropic = new Anthropic({ apiKey: config.anthropic.apiKey });
+        }
+        if (config.bedrock?.credentials) {
+            this.clients.bedrock = new BedrockRuntimeClient({
+                region: config.bedrock.region || 'us-east-1',
+                credentials: config.bedrock.credentials
+            });
+        }
+        if (config.ollama?.baseUrl) {
+            this.clients.ollama = { baseUrl: config.ollama.baseUrl };
+        }
     }
-    const chatCompletion = await openai.createChatCompletion({
-        model: 'gpt-4', messages: [{role: 'user', content: prompt,}]
-    });
-    return chatCompletion.data.choices[0].message.content
+
+    async getCompletion({ model, prompt, stream = false }) {
+        const selectedModel = model || this.config.defaultModel || 'openai';
+
+        if (!this.clients[selectedModel]) {
+            throw new Error(`Model ${selectedModel} is not configured. Please check your configuration.`);
+        }
+
+        switch (selectedModel) {
+            case 'openai': {
+                const response = await this.clients.openai.chat.completions.create({
+                    model: this.config.openai.model || 'gpt-4',
+                    messages: [{ role: 'user', content: prompt }],
+                    stream
+                });
+
+                if (stream) {
+                    return streamToResponse(response);
+                }
+
+                return response.choices[0].message.content;
+            }
+
+            case 'anthropic': {
+                const response = await this.clients.anthropic.messages.create({
+                    model: this.config.anthropic.model || 'claude-3-opus-20240229',
+                    max_tokens: 1024,
+                    messages: [{ role: 'user', content: prompt }],
+                    stream
+                });
+
+                if (stream) {
+                    return streamToResponse(response);
+                }
+
+                return response.content[0].text;
+            }
+
+            case 'bedrock': {
+                const input = {
+                    modelId: this.config.bedrock.model || 'anthropic.claude-3-sonnet-20240229-v1:0',
+                    contentType: 'application/json',
+                    accept: 'application/json',
+                    body: JSON.stringify({
+                        prompt,
+                        max_tokens: 1024,
+                    })
+                };
+
+                const command = new InvokeModelCommand(input);
+                const response = await this.clients.bedrock.send(command);
+                const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+
+                return responseBody.completion;
+            }
+
+            case 'ollama': {
+                const response = await fetch(`${this.clients.ollama.baseUrl}/api/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: this.config.ollama.model || 'llama2',
+                        prompt,
+                        stream
+                    })
+                });
+
+                if (stream) {
+                    return streamToResponse(response.body);
+                }
+
+                const data = await response.json();
+                return data.response;
+            }
+
+            default:
+                throw new Error(`Unsupported model: ${selectedModel}`);
+        }
+    }
 }
+
+let llmClient;
+let config;
 
 function getRandomIndex(max) {
     return Math.floor(Math.random() * max);
@@ -38,17 +124,17 @@ function getRandomIndex(max) {
 async function getRandomCommitAroundOneYearAgo() {
     const oneYearAgoDate = new Date();
     oneYearAgoDate.setFullYear(oneYearAgoDate.getFullYear() - 1);
-    oneYearAgoDate.setDate(oneYearAgoDate.getDate() - 7); // 일주일 전으로 설정
+    oneYearAgoDate.setDate(oneYearAgoDate.getDate() - 7);
 
     const endDate = new Date(oneYearAgoDate);
-    endDate.setDate(endDate.getDate() + 14); // 일주일 후로 설정
+    endDate.setDate(endDate.getDate() + 14);
 
     const startDateString = `${oneYearAgoDate.getFullYear()}-${String(oneYearAgoDate.getMonth() + 1).padStart(2, '0')}-${String(oneYearAgoDate.getDate()).padStart(2, '0')}`;
     const endDateString = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
 
     const userEmail = execSync('git config user.email').toString().trim();
     const log = execSync(`git log --since="${startDateString} 00:00" --until="${endDateString} 23:59" --author="${userEmail}" --no-merges --pretty=format:"%H"`).toString();
-    const commits = log.split('\n').filter(Boolean); // filter(Boolean) to remove empty strings
+    const commits = log.split('\n').filter(Boolean);
 
     if (commits.length === 0) {
         return null;
@@ -84,24 +170,44 @@ async function askUserForAction(commitData) {
     });
 }
 
+async function getCommitMessage(diff, options = {}) {
+    const prompt = `Given the following code changes:\n\n${diff}\n\nWhat is an appropriate commit message?`;
+    const response = await llmClient.getCompletion({ model: options.model, prompt });
+    return response.replace(/\"/g, '');
+}
+
+async function getReview(diff, options = {}) {
+    let prompt = `Review the following code changes and suggest improvements \n\n${diff}`;
+    if (config.reviewLanguage) {
+        prompt += `\n\nPlease respond in this language: ${config.reviewLanguage}`;
+    }
+
+    return await llmClient.getCompletion({
+        model: options.model,
+        prompt,
+        stream: true  // 리뷰는 길어질 수 있으므로 스트리밍 사용
+    });
+}
+
 function init() {
     try {
         const configPath = path.join(os.homedir(), '.commit-helper-config.json');
         config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        openai = new OpenAIApi(new Configuration({apiKey: config.apiKey}))
+        llmClient = new LLMClient(config);
     } catch (err) {
-        console.log('No OpenAI API key found. Please set your key using the config command.');
-        console.log('commit-helper config -k <key>');
+        console.log('Configuration error. Please set up your configuration using the config command.');
+        console.log('commit-helper config --help');
         process.exit(1);
     }
 }
 
-program.version('0.0.7');
+program.version('0.1.0');
 
 program
-    .command('message', {isDefault: true})
-    .description('Create a commit with a message from the OpenAI API.')
-    .action(async () => {
+    .command('message')
+    .description('Create a commit message using AI.')
+    .option('-m, --model <model>', 'Specify the AI model to use (openai/anthropic/bedrock/ollama)')
+    .action(async (options) => {
         init();
         const diff = execSync('git diff').toString();
 
@@ -110,13 +216,15 @@ program
             return;
         }
 
-        const commitMessage = await getCommitMessage(diff);
+        const commitMessage = await getCommitMessage(diff, options);
         console.log(commitMessage);
     });
 
-program.command('review')
-    .description('Review a changes with the OpenAI API.')
-    .action(async () => {
+program
+    .command('review')
+    .description('Review changes using AI.')
+    .option('-m, --model <model>', 'Specify the AI model to use (openai/anthropic/bedrock/ollama)')
+    .action(async (options) => {
         init();
         const diff = execSync('git diff').toString();
 
@@ -125,13 +233,15 @@ program.command('review')
             return;
         }
 
-        const review = await getReview(diff);
+        const review = await getReview(diff, options);
         console.log(review);
-    })
+    });
 
-program.command('timetravel')
-    .description('Review a random commit from the past year.')
-    .action(async () => {
+program
+    .command('timetravel')
+    .description('Review a random commit from around one year ago.')
+    .option('-m, --model <model>', 'Specify the AI model to use (openai/anthropic/bedrock/ollama)')
+    .action(async (options) => {
         init();
 
         let commitData;
@@ -149,23 +259,82 @@ program.command('timetravel')
 
         if (userAction === 'yes') {
             console.log(`Reviewing commit ${commitData.commit}...`);
-            const review = await getReview(commitData.diff);
+            const review = await getReview(commitData.diff, options);
             console.log(`Review for commit ${commitData.commit}:\n${review}`);
         }
     });
 
 program
     .command('config')
-    .option('-k, --api-key <key>', 'Set the OpenAI API key.')
-    .option('-l, --review-language <reviewLanguage>', 'Set the language for the review.')
-    .action((config) => {
+    .description('Configure the commit helper')
+    .option('--openai-key <key>', 'Set OpenAI API key')
+    .option('--openai-model <model>', 'Set OpenAI model (default: gpt-4)')
+    .option('--anthropic-key <key>', 'Set Anthropic API key')
+    .option('--anthropic-model <model>', 'Set Anthropic model (default: claude-3-opus-20240229)')
+    .option('--bedrock-access-key <key>', 'Set AWS Bedrock access key')
+    .option('--bedrock-secret-key <key>', 'Set AWS Bedrock secret key')
+    .option('--bedrock-region <region>', 'Set AWS Bedrock region')
+    .option('--bedrock-model <model>', 'Set AWS Bedrock model')
+    .option('--ollama-url <url>', 'Set Ollama base URL')
+    .option('--ollama-model <model>', 'Set Ollama model')
+    .option('--default-model <model>', 'Set default model (openai/anthropic/bedrock/ollama)')
+    .option('-l, --review-language <language>', 'Set the language for reviews')
+    .action((options) => {
         const configPath = path.join(os.homedir(), '.commit-helper-config.json');
         let oldConfig = {};
+
         if (fs.existsSync(configPath)) {
             oldConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         }
-        fs.writeFileSync(configPath, JSON.stringify({...oldConfig, ...config}), 'utf-8');
-        console.log('Config saved.');
+
+        const newConfig = {
+            ...oldConfig,
+            defaultModel: options.defaultModel || oldConfig.defaultModel,
+            reviewLanguage: options.reviewLanguage || oldConfig.reviewLanguage,
+        };
+
+        // Update OpenAI config
+        if (options.openaiKey || options.openaiModel) {
+            newConfig.openai = {
+                ...oldConfig.openai,
+                apiKey: options.openaiKey || oldConfig.openai?.apiKey,
+                model: options.openaiModel || oldConfig.openai?.model || 'gpt-4'
+            };
+        }
+
+        // Update Anthropic config
+        if (options.anthropicKey || options.anthropicModel) {
+            newConfig.anthropic = {
+                ...oldConfig.anthropic,
+                apiKey: options.anthropicKey || oldConfig.anthropic?.apiKey,
+                model: options.anthropicModel || oldConfig.anthropic?.model || 'claude-3-opus-20240229'
+            };
+        }
+
+        // Update Bedrock config
+        if (options.bedrockAccessKey || options.bedrockSecretKey || options.bedrockRegion || options.bedrockModel) {
+            newConfig.bedrock = {
+                ...oldConfig.bedrock,
+                credentials: {
+                    accessKeyId: options.bedrockAccessKey || oldConfig.bedrock?.credentials?.accessKeyId,
+                    secretAccessKey: options.bedrockSecretKey || oldConfig.bedrock?.credentials?.secretAccessKey
+                },
+                region: options.bedrockRegion || oldConfig.bedrock?.region || 'us-east-1',
+                model: options.bedrockModel || oldConfig.bedrock?.model || 'anthropic.claude-3-sonnet-20240229-v1:0'
+            };
+        }
+
+        // Update Ollama config
+        if (options.ollamaUrl || options.ollamaModel) {
+            newConfig.ollama = {
+                ...oldConfig.ollama,
+                baseUrl: options.ollamaUrl || oldConfig.ollama?.baseUrl || 'http://localhost:11434',
+                model: options.ollamaModel || oldConfig.ollama?.model || 'llama2'
+            };
+        }
+
+        fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 2), 'utf-8');
+        console.log('Configuration updated successfully.');
     });
 
 program.parse(process.argv);

@@ -1,78 +1,132 @@
-- # Commit Helper
+# Commit Helper
 
-Commit Helper is a Node.js command line tool that uses OpenAI's GPT-4 model to generate commit messages and code reviews based on your git diff.
-## Installation
+Git 커밋 메시지 작성과 코드 리뷰를 AI의 도움을 받아 수행하는 CLI 도구입니다. OpenAI, Anthropic Claude, AWS Bedrock, Ollama 등 다양한 AI 모델을 지원합니다.
 
-```bash
+## 특징
 
-npm install -g @midagedev/commit-helper
-```
+- 다양한 AI 모델 지원 (OpenAI GPT-4, Claude 3, AWS Bedrock, Ollama)
+- 커밋 메시지 자동 생성
+- AI 기반 코드 리뷰
+- 1년 전 커밋 회고 기능
+- 실시간 스트리밍 응답 지원
+- 다국어 리뷰 지원
 
-
-## Configuration
-
-Before you use the `commit-helper`, you need to set up your OpenAI API key. Use the `config` command to set your key:
-
-```bash
-
-commit-helper config -k <your-openai-api-key>
-```
-
-
-
-You can also set the language for the code review:
+## 설치
 
 ```bash
-
-commit-helper config -l <language>
+npm install -g commit-helper
 ```
 
+## 설정
 
-
-The `language` is which you want the review to be.
-
-The configuration is saved locally in your project directory.
-## Usage
-### Generate a commit message
-
-To generate a commit message based on your git diff, run the `message` command:
+처음 사용하기 전에 AI 모델에 대한 설정이 필요합니다. 다음 명령어들로 설정할 수 있습니다:
 
 ```bash
+# OpenAI 설정
+commit-helper config --openai-key "your-api-key" --openai-model "gpt-4"
 
-commit-helper
-# result example: "Added option to specify review language and improved configuration handling in commit-helper.js"
+# Anthropic Claude 설정
+commit-helper config --anthropic-key "your-api-key" --anthropic-model "claude-3-opus-20240229"
+
+# AWS Bedrock 설정
+commit-helper config --bedrock-access-key "your-access-key" \
+                    --bedrock-secret-key "your-secret-key" \
+                    --bedrock-region "us-east-1" \
+                    --bedrock-model "anthropic.claude-3-sonnet-20240229-v1:0"
+
+# Ollama 설정
+commit-helper config --ollama-url "http://localhost:11434" \
+                    --ollama-model "llama2"
+
+# 기본 모델 설정
+commit-helper config --default-model "openai"
+
+# 리뷰 언어 설정 (예: 한국어)
+commit-helper config --review-language "Korean"
 ```
 
+## 사용법
 
+### 커밋 메시지 생성
 
-The generated commit message will be printed to the console.
-### Generate a code review
-
-To generate a code review based on your git diff, run the `review` command:
+현재 스테이징된 변경사항에 대한 커밋 메시지를 생성합니다:
 
 ```bash
-
-commit-helper review
-# result example: 
-# 본 코드 변경 사항에 대한 몇 가지 개선 제안입니다.
-
-# 1. `let config;` 라인. 전역 변수의 사용을 최소화하세요. 대신 함수의 인수로 필요한 값을 전달하거나 필요한 경우 클래스를 사용하함수 인수를 사용하도록 변경하조십시오.
-
-# 2. 에러처리를 보완하세요. OpenAI API 키가 없는 경우 현재 코드는 단순히 오류 메시지를 보여주고 프로세스를 종료합니다. 이는 사용 야기합니다. 가급적 에러를 보다 세분화하고, 사용자가 문제를 이해하고 해결할 수 있도록 도움을 주는 오류 메시지를 부여하는 것이 좋습니다.
-
-# 3. 사용자에게 기본로 설정할 언어에 대한 메시지를 제공하실 수 있습니다. 만약 사용자가 리뷰어의 언어를 설정하지 않으면, 어떤 언 것이 사용자 경험을 개선하겠습니다.
-
-# 4. `review-language` 옵션이 필수 사항이 아니라면, 이를 설정하지 않을 경우 수행되는 작업을 계획하세요. 현재 코드는 이 설정이 없으면 오류가 발생할 수 있습니다.
-
-# 5. `fs.writeFileSync()` 실패 시 처리를 추가하세요. 파일 기록 실패는 다양한 이유로 발생하며, 그에 따른 적절한 에러 메시지를 제공하고 회복하는 것이 필요합니다.
-
+commit-helper message                  # 기본 모델 사용
+commit-helper message -m anthropic     # 특정 모델 지정
 ```
 
-### Time Travel
-To review a random commit from around one year ago:
+### 코드 리뷰
+
+현재 변경사항에 대한 코드 리뷰를 받습니다:
 
 ```bash
-
-commit-helper timetravel
-
+commit-helper review                   # 기본 모델 사용
+commit-helper review -m bedrock        # AWS Bedrock 사용
 ```
+
+### 타임머신 (1년 전 커밋 리뷰)
+
+약 1년 전의 랜덤한 커밋을 선택하여 리뷰합니다:
+
+```bash
+commit-helper timetravel               # 기본 모델 사용
+commit-helper timetravel -m ollama     # Ollama 사용
+```
+
+## 설정 파일
+
+설정은 `~/.commit-helper-config.json`에 저장되며, 다음과 같은 구조를 가집니다:
+
+```json
+{
+  "defaultModel": "openai",
+  "reviewLanguage": "Korean",
+  "openai": {
+    "apiKey": "sk-...",
+    "model": "gpt-4"
+  },
+  "anthropic": {
+    "apiKey": "sk-ant-...",
+    "model": "claude-3-opus-20240229"
+  },
+  "bedrock": {
+    "credentials": {
+      "accessKeyId": "AKIA...",
+      "secretAccessKey": "..."
+    },
+    "region": "us-east-1",
+    "model": "anthropic.claude-3-sonnet-20240229-v1:0"
+  },
+  "ollama": {
+    "baseUrl": "http://localhost:11434",
+    "model": "llama2"
+  }
+}
+```
+
+## 지원하는 모델
+
+### OpenAI
+- 기본 모델: gpt-4
+- 다른 OpenAI 모델들도 설정 가능
+
+### Anthropic Claude
+- 기본 모델: claude-3-opus-20240229
+- 다른 Claude 모델들도 설정 가능
+
+### AWS Bedrock
+- 기본 모델: anthropic.claude-3-sonnet-20240229-v1:0
+- AWS Bedrock에서 제공하는 다른 모델들도 사용 가능
+
+### Ollama
+- 기본 모델: llama2
+- Ollama에서 지원하는 다른 모델들도 사용 가능
+
+## 라이선스
+
+MIT
+
+## 기여하기
+
+이슈와 풀 리퀘스트는 언제나 환영합니다!
